@@ -21,7 +21,8 @@ ST_TITLE = "中国历史 RAG 问答系统"
 # txt 文件夹路径（修改为你的实际路径）
 TXT_FOLDER = "./data_extract/history_data"
 # 本地 Qwen2.5-7B-Instruct 路径（你之前下载到 pub 的）
-LOCAL_MODEL_PATH = "/root/autodl-tmp/qwen/Qwen2___5-7B-Instruct"
+# LOCAL_MODEL_PATH = "/root/autodl-tmp/qwen/Qwen2___5-7B-Instruct"
+LOCAL_MODEL_PATH = "./merged_qwen_history"
 # 嵌入模型"BAAI/bge-m3"（支持更长文本）
 EMBEDDING_MODEL = "BAAI/bge-m3"
 # 向量库持久化目录

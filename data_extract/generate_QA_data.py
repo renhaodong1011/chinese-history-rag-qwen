@@ -3,7 +3,6 @@ Created on 2025/12/20 by RenHaodong
 Description:
     用于从爬取的文件中，提取QA对，用于LORA微调
 """
-
 import requests
 from typing import *
 import json
