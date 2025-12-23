@@ -33,10 +33,10 @@ model_dir = snapshot_download('qwen/Qwen2.5-7B-Instruct', cache_dir='/root/autod
 [模型目录](./img/1.png)
 
 ## 文件作用介绍
-**1.model_download.py**:用于下载Qwen-2.5-7B-Instruct模型到AutoDL本地。
-**2.data_extract/spider.py**: 用于在中华上下五千年网站中爬取所有文本数据，共282个txt文件。
-**3.data_extract/generate_QA_data.py**:使用QWen4-8B模型，智能从爬取的所有数据中生成QA对，用于后续的Lora微调，共计提取QA对9978条，保存在相应文件夹下的chinese_history_qa.json文件中。
-**4.RAG.py**: 通过streamlit实现了一个完全本地化的中国历史领域 RAG（Retrieval-Augmented Generation）Web问答系统,支持流式输出。
+- **1.model_download.py**:用于下载Qwen-2.5-7B-Instruct模型到AutoDL本地。
+- **2.data_extract/spider.py**: 用于在中华上下五千年网站中爬取所有文本数据，共282个txt文件。
+- **3.data_extract/generate_QA_data.py**:使用QWen4-8B模型，智能从爬取的所有数据中生成QA对，用于后续的Lora微调，共计提取QA对9978条，保存在相应文件夹下的chinese_history_qa.json文件中。
+- **4.RAG.py**: 通过streamlit实现了一个完全本地化的中国历史领域 RAG（Retrieval-Augmented Generation）Web问答系统,支持流式输出。
 
 ## 启动方式
 
