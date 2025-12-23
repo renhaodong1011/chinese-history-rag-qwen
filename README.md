@@ -30,7 +30,7 @@ from modelscope import snapshot_download, AutoModel, AutoTokenizer
 import os
 model_dir = snapshot_download('qwen/Qwen2.5-7B-Instruct', cache_dir='/root/autodl-tmp', revision='master')
 ```
-[模型目录](./img/1.png)
+![模型目录] <img width="245" height="412" alt="1" src="https://github.com/user-attachments/assets/cbc17021-6fa0-4fcd-9284-7a0b5c74d6b0" />
 
 ## 文件作用介绍
 - **1.model_download.py**:用于下载Qwen-2.5-7B-Instruct模型到AutoDL本地。
