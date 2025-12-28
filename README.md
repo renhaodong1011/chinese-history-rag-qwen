@@ -1,4 +1,4 @@
-<img width="531" height="415" alt="20" src="https://github.com/user-attachments/assets/bb20fbcb-21a2-432e-b557-009097a4652d" /># 中国历史RAG问答系统
+# 中国历史RAG问答系统
 
 作为南航数学学院的一位研究生，我对中国的历史颇感兴趣，因此，我将构建一个基于Qwen大模型的RAG历史问答系统，并使用Lora微调提升领域准确性。
 - **github仓库**：https://github.com/renhaodong1011/chinese-history-rag-qwen 。
@@ -76,5 +76,5 @@ streamlit run RAG.py
 - **评估过程** ：
   <img width="1541" height="402" alt="19" src="https://github.com/user-attachments/assets/e09b173c-d690-40a8-8b0d-6d1dfd00bb24" />
 - **评估结果可视化**
-  <img width="531" height="415" alt="20" src="https://github.com/user-attachments/assets/ce41edef-ab8c-4f60-8e82-5224a68602bc" />
+  <img width="531" height="415" alt="20" src="https://github.com/user-attachments/assets/bb20fbcb-21a2-432e-b557-009097a4652d" />
 
