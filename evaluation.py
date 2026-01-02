@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     print("-----------------------Evaluating Lora hallucination-----------------------")
     Lora_rate, Lora_hallucination_count, total = evaluate_hallucination_rate(Lora_data)
-    print("baseline ： 幻觉率：{}, 有幻觉的测试集数：{}".format(Lora_rate, Lora_hallucination_count))
+    print("Lora ： 幻觉率：{}, 有幻觉的测试集数：{}".format(Lora_rate, Lora_hallucination_count))
 
     metrics = ['Accuracy', 'BERTScore F1', 'Hallucination Rate']
     base_values = [base_precision, base_f1, base_rate]

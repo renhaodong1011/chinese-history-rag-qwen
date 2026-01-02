@@ -2,15 +2,15 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
 from transformers import DataCollatorForLanguageModeling
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import os
-import matplotlib.pyplot as plt  # 新增：绘图库
-import numpy as np           # 新增
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # ==================== 配置区 ====================
 MODEL_PATH = "/root/autodl-tmp/qwen/Qwen2___5-7B-Instruct"
 DATASET_PATH = "./data_extract/chinese_history_qa.json"
-OUTPUT_DIR = "./qwen_history_lora"
+OUTPUT_DIR = "/root/autodl-tmp/qwen_history_lora"
 MAX_SEQ_LENGTH = 512
 
 if not os.path.exists(OUTPUT_DIR):
@@ -19,19 +19,19 @@ if not os.path.exists(OUTPUT_DIR):
 # LoRA 参数
 R = 64
 LORA_ALPHA = 128
-LORA_DROPOUT = 0.05
+LORA_DROPOUT = 0.1
 TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj",
                   "gate_proj", "up_proj", "down_proj"]
 
 # 训练超参数
-BATCH_SIZE = 4
+BATCH_SIZE = 16
 GRADIENT_ACCUMULATION_STEPS = 4
 LEARNING_RATE = 5e-5
-NUM_EPOCHS = 3
+NUM_EPOCHS = 5
 WARMUP_STEPS = 100
-LOGGING_STEPS = 10        # 每 10 步记录一次
+LOGGING_STEPS = 10  # 每 10 步记录一次
 SAVE_STEPS = 200
-EVAL_STEPS = 100          # 新增：每 100 步评估一次（可选）
+EVAL_STEPS = 100  # 新增：每 100 步评估一次（可选）
 
 # 新增：用于记录指标的列表
 train_losses = []
@@ -49,7 +49,8 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     load_in_4bit=True,
     torch_dtype=torch.bfloat16,
-    trust_remote_code=True
+    trust_remote_code=True,
+    attn_implementation="flash_attention_2",  # 开启 atten-fast 加速
 )
 
 model = prepare_model_for_kbit_training(model)
@@ -68,26 +69,60 @@ model.print_trainable_parameters()
 model.gradient_checkpointing_enable()
 
 # 3-4. 数据加载和预处理（保持不变）
-dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
+# dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
+# try:
+#     dataset = load_dataset(
+#                     "json",
+#                     data_files=DATASET_PATH,
+#                     split="train",
+#                     field="text" )
+# except Exception as e:
+#     print("数据集加载失败！")
+#     print(traceback.format_exc())  # 这行会打印完整的错误堆栈
+#     raise
+df = pd.read_json(DATASET_PATH, orient='records')
+for col in df.columns:
+    if df[col].dtype == 'object':
+        df[col] = df[col].astype(str)
+dataset = Dataset.from_pandas(df)
+
 
 def preprocess_function(examples):
     instructions = examples['instruction']
-    inputs = examples.get('input', [""] * len(instructions))  # 防止 input 列不存在
+    inputs = examples.get('input', [""] * len(instructions))
     outputs = examples['output']
 
-    texts = []
+    full_texts = []
     for instr, inp, out in zip(instructions, inputs, outputs):
-        text = f"### 指令：\n{instr}\n\n### 输入：\n{inp}\n\n### 回答：\n{out}"
-        texts.append(text)
+        text = (
+            "<|im_start|>system\n你是一个有帮助的助手。<|im_end|>\n"
+            f"<|im_start|>user\n{instr}\n{inp}<|im_end|>\n"
+            f"<|im_start|>assistant\n{out}<|im_end|>\n"
+        )
+        full_texts.append(text)
 
-    tokenized = tokenizer(
-        texts,
-        truncation=True,
-        padding="max_length",
+    # 关键：使用 padding="max_length" 或动态，但这里我们用 tokenizer 统一处理
+    # 推荐：直接让 tokenizer 返回 tensor，并设置 padding 到 max_length（或动态）
+    model_inputs = tokenizer(
+        full_texts,
         max_length=MAX_SEQ_LENGTH,
+        truncation=True,
+        padding="max_length",  # 先用固定长度 padding，避免 collator 出错
+        return_tensors="pt",  # 直接返回 tensor
     )
-    tokenized["labels"] = [labels for labels in tokenized["input_ids"]]  # 复制 labels
-    return tokenized
+    labels = model_inputs["input_ids"].clone()
+    for i in range(labels.size(0)):
+        # 重建当前样本的提示部分（不含 output）
+        prompt = full_texts[i].split("<|im_start|>assistant\n")[0] + "<|im_start|>assistant\n"
+        prompt_tokens = tokenizer(prompt, add_special_tokens=True)["input_ids"]
+        assistant_start = len(prompt_tokens)
+
+        if assistant_start < labels.size(1):
+            labels[i, :assistant_start] = -100
+
+    model_inputs["labels"] = labels
+    return model_inputs
+
 
 tokenized_dataset = dataset.map(
     preprocess_function,
@@ -100,6 +135,7 @@ data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 # ==================== 新增：自定义回调记录 loss ====================
 from transformers import TrainerCallback
 
+
 class LossLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is not None and "loss" in logs:
@@ -111,6 +147,7 @@ class LossLoggingCallback(TrainerCallback):
         if metrics is not None and "eval_loss" in metrics:
             eval_losses.append(metrics["eval_loss"])
             print(f"Step {state.global_step} - Eval Loss: {metrics['eval_loss']:.4f}")
+
 
 # 实例化回调
 loss_callback = LossLoggingCallback()
@@ -125,10 +162,10 @@ training_args = TrainingArguments(
     warmup_steps=WARMUP_STEPS,
     logging_steps=LOGGING_STEPS,
     save_steps=SAVE_STEPS,
-    eval_steps=EVAL_STEPS,                    # 新增：评估频率
-    evaluation_strategy="steps",              # 新增：开启评估
+    eval_steps=EVAL_STEPS,  # 新增：评估频率
+    eval_strategy="steps",
     save_strategy="steps",
-    load_best_model_at_end=True,              # 新增：加载最佳模型
+    load_best_model_at_end=True,  # 新增：加载最佳模型
     metric_for_best_model="eval_loss",
     greater_is_better=False,
     fp16=False,
@@ -175,7 +212,7 @@ if len(train_losses) > 0:
 
     # 验证 loss（如果有）
     if eval_losses:
-        eval_steps = list(range(EVAL_STEPS, len(steps)*LOGGING_STEPS, EVAL_STEPS))
+        eval_steps = list(range(EVAL_STEPS, len(steps) * LOGGING_STEPS, EVAL_STEPS))
         plt.subplot(1, 2, 2)
         plt.plot(eval_steps[:len(eval_losses)], eval_losses, label="Eval Loss", color="orange", marker='s')
         plt.title("Evaluation Loss")

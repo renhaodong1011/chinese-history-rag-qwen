@@ -1,7 +1,7 @@
 """
 Created on 2025/12/20 by RenHaodong
 Description:
-    用于从爬取的文件中，提取QA对，用于LORA微调
+    用于从爬取的文件中，提取QA对，用于LORA微调,Qwen3-Next-80B-A3B-Thinking
 """
 import requests
 from typing import *
@@ -16,7 +16,7 @@ headers = {
 }
 
 payload = {
-  "model": "Qwen/Qwen3-8B",
+  "model": "Qwen/Qwen3-VL-30B-A3B-Thinking",
   "messages": [
     {
       "role": "user",
@@ -24,7 +24,7 @@ payload = {
     }
   ],
   "stream": False,
-  "max_tokens": 3000000,
+  "max_tokens": 10000,
   "thinking_budget": 4096,
   "min_p": 0.05,
   "stop": None,
@@ -50,6 +50,7 @@ payload = {
 }
 
 all_QA_data = []
+test_QA_data = []
 
 class ExtractAnswer:
 
@@ -67,7 +68,10 @@ class ExtractAnswer:
                         "input": "",
                         "output": each_dict['answer']
                     }
-                    all_QA_data.append(each_QA)
+                    if (len(all_QA_data)+ len(test_QA_data) + 1) % 10 == 0:
+                        test_QA_data.append(each_QA)
+                    else:
+                        all_QA_data.append(each_QA)
 
 class Qwen:
 
@@ -79,10 +83,9 @@ class Qwen:
     answer_message = resp.json()
     ExtractAnswer.extract(answer_message)
 
-
 if __name__ == '__main__':
 
-    prompt = "你是一个中国历史专家。请基于以下历史文本，直接生成5个以上Alpaca 格式的 QA 对（JSON 列表形式）。每个 QA 对格式严格如下：直接输出完整的 JSON 列表，不要任何解释、思考或工具调用。不要使用 <think> 标签。历史文本：{}"
+    prompt = "你是一个中国历史专家。请基于以下历史文本，直接生成5个Alpaca 格式的 QA 对（JSON 列表形式）,我将使用生成的QA对进行Lora微调，使得可以提升垂直领域的模型准确度并降低模型幻觉率,在最后再帮我生成1条通识数据QA对,通识数据QA对的内容需要不是历史领域的其他任何领域内容,请帮我生成一些高质量的QA对，部分QA对可以为长文本,每个 QA 对格式严格如下：直接输出完整的 JSON 列表，不要任何解释、思考或工具调用,不要使用 <think> 标签, 不需要任何多余的内容只需要QA对数据。历史文本：{}"
 
     files = os.listdir('./history_data')
     for file_index, file in enumerate(files):
@@ -92,7 +95,7 @@ if __name__ == '__main__':
                 content = f.read()
                 content = content.replace('\n', '')
             print("开始处理文件：{}".format(file))
-            for i in range(0,len(content),300):
+            for i in range(0, len(content)-302 ,300):
                 try:
                     _ = content[i: i+300]
                     Qwen.get_answer(prompt.format(_))
@@ -103,8 +106,12 @@ if __name__ == '__main__':
         except:
             time.sleep(60)
             continue
-        print("file_{}_{}QA对生成完毕，目前共搜集QA对{}条".format(file_index,file, len(all_QA_data)))
+        print("file_{}_{}QA对生成完毕，目前共搜集训练集QA对{}条，测试集QA对{}条".format(
+            file_index,file, len(all_QA_data), len(test_QA_data)))
         print("--------------------------------------------------------------------------------")
 
-    with open('./chinese_history_qa.json', 'w', encoding='utf-8') as f:
+    with open('./train_qa.json', 'w', encoding='utf-8') as f:
         json.dump(all_QA_data, f, ensure_ascii=False, indent=2)
+
+    with open('./test_qa.json', 'w', encoding='utf-8') as f:
+        json.dump(test_QA_data, f, ensure_ascii=False, indent=2)

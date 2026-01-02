@@ -56,8 +56,8 @@ JUDGE_PROMPT = """你是一个严格的中国历史事实检查专家。请判�
 参考答案（真实事实）：{reference}
 模型回答：{prediction}
 请直接输出：
-- 如果有明显幻觉或事实错误或有一点点错误：输出 "是"
-- 如果完全正确、无明显幻觉：输出 "否"
+- 如果有明显幻觉或事实错误：输出 "是"
+- 如果基本正确、无明显幻觉：输出 "否"
 
 只输出“是”或“否”，不要解释。
 
@@ -93,5 +93,5 @@ def evaluate_hallucination_rate(data):
         hallucination_count += 1
 
     total = len(data)
-    rate = hallucination_count / total * 100
+    rate = hallucination_count / total
     return rate, hallucination_count, total
