@@ -7,7 +7,12 @@
 - **迭代2**： 1.新增Lora_tran.py 文件对Qwen-2.5-7B-Instruct模型进行Lora微调；2.新增merge_model.py 文件对微调后的模型进行合并； 3.将RAG中的模型替换为微调后的模型。 对搜集的9978条QA对进行微调在A100-PCIE-40GB(40GB)单卡模型下耗时2.5小时，一共训练了3个epoch, batch_size为4，结果显示Traning loss 和 Evaluation loss 曲线总体上呈现持续下降，Traning loss从一开始的2.9左右持续下降到0.5，Evaluation loss 从1.5左右持续下降到了0.3。最终在测试时，微调后RAG系统回答的更加精准以及简洁。
 - **迭代3**: 新增对微调前后的Qwen模型进行评估，评估指标为Precision、F1和幻觉率。1.data_extract/generate_test_data.py: 使用Qwen-3-8B模型生成测试集数据保存在data_extract/chinese_history_test.json文件中 2. evaluation.py:对微调前面的模型进行评估。 3.eval/precision_F1_eval.py : 编写函数读取微调前后的模型，对测试集问题进行推理，并使用bret_score模块评估precision和F1。 eval/hallucination_eval.py：采用 LLM-as-a-Judge评估微调前和微调后的幻觉率，编写函数使用Qwen-3-8B模型，对微调前后模型生成的内容进行幻觉率判断。 实验结果表明微调后模型在测试集上的precision从原来的0.5946提升到了0.6721，F1分数从原来的0.6483提升到了0.7030。 但幻觉率没有显著提升。相关结果将由截图的形式展示在后面。
 - **迭代4**: 新增测试集数据，从原先的100条测试集数据新增到280条，并修改幻觉率检测的prompt,之前的prompt认为模型回答的完全正确才会认为没有幻觉，修改后认为基本上正确没有事实性错误则没有幻觉。最终结果微调后模型在测试集上的precision从原来的0.6088提升到了0.6855，F1分数从原来的0.6561提升到了0.7080。 但幻觉率微调前为0.175，微调后为0.232。 目前怀疑有可能在微调时训练的轮数过多，导致模型存在过拟合的现象，后续将调整微调策略，看是否可以有效降低幻觉率，并进一步提高历史专业领域的precision和F1。
-  
+- **迭代5**: 本次迭代，使用了更强大的Qwen2.5-32B-Instruct模型，重新生成了QA对，并划分了训练集和测试集。生成的训练集QA对为14000条，测试集QA对150条。并在MAX_SEQ_LENGTH=1024，R=64，LORA_ALPHA=128的配置下重新微调了模型。完善了评估模块，对于precision,recall,f1等指标，舍弃了之前使用的bret_score方法，采用词级无序 F1 评估方法并加上LLM-judge方法进行修正。最终得到的结果为precision指标从0.526上升到了0.766， recall指标从0.669上升到了0.820， f1指标从0.566上升到了0.807，且幻觉率从微调前的0.2下降到0.107。
+
+## 团队分工
+- **任浩栋** ：
+- **唐佳懿** ：
+
 ## 运行环境
 
 - **平台** ： AutoDL(https://www.autodl.com/)。
@@ -48,8 +53,9 @@ model_dir = snapshot_download('qwen/Qwen2.5-7B-Instruct', cache_dir='/root/autod
 - **6.merge_model.py**: 对微调后的模型进行合并。
 - **7.data_extract/generate_test_data.py**:使用Qwen-3-8B模型生成测试集数据保存在data_extract/chinese_history_test.json文件中。
 - **8.evaluation.py**：对微调前面的模型进行评估。
-- **9 eval/precision_F1_eval.py**：编写函数读取微调前后的模型，对测试集问题进行推理，并使用bret_score模块评估precision和F1。
-- **10 eval/hallucination_eval.py**：采用 LLM-as-a-Judge评估微调前和微调后的幻觉率，编写函数使用Qwen-3-8B模型，对微调前后模型生成的内容进行幻觉率判断
+- **9 eval/precision_F1_eval.py**：编写函数读取微调前后的模型，对测试集问题进行推理，采用词级无序 F1 评估方法并加上LLM-judge方法进行修正。
+- **10 eval/hallucination_eval.py**：采用 LLM-as-a-Judge评估微调前和微调后的幻觉率，编写函数使用Qwen-3-8B模型，对微调前后模型生成的内容进行幻觉率判断。
+- **11 inference.py**： 对微调前后的模型对测试集进行推理，并保存推理后的答案，便于进行模型评估。
 
 ## 启动方式
 
@@ -78,4 +84,9 @@ streamlit run RAG.py
   <img width="1541" height="402" alt="19" src="https://github.com/user-attachments/assets/e09b173c-d690-40a8-8b0d-6d1dfd00bb24" />
 - **评估结果可视化**
   <img width="531" height="415" alt="20" src="https://github.com/user-attachments/assets/bb20fbcb-21a2-432e-b557-009097a4652d" />
+
+## 第二次优化后的Lora微调和模型评估
+<img width="1200" height="490" alt="22" src="https://github.com/user-attachments/assets/32081f4a-846b-4282-91b1-6dfd48e1c5af" />
+<img width="2964" height="1763" alt="24" src="https://github.com/user-attachments/assets/57e6279e-db49-4ce1-aab5-f558414b68ea" />
+
 
