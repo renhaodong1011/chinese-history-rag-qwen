@@ -38,7 +38,7 @@ if __name__ == '__main__':
 
     metrics = ['precision', 'recall', 'f1', 'Hallucination Rate']
     base_values = [base_precision, base_recall, base_f1, base_rate]
-    lora_values = [lora_precision+0.22, lora_recall+0.22, lora_f1+0.25, Lora_rate-0.3]
+    lora_values = [lora_precision, lora_recall, lora_f1, Lora_rate]
 
     x = np.arange(len(metrics))
     width = 0.35
