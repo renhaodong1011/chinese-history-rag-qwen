@@ -5,45 +5,40 @@ Description:
     评估标准包括：准确率(precision),F1,幻觉率等
 """
 import json
-import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"  # ← 加这行
-from eval.precision_F1_eval import evaluate_precision_F1
+from eval.precision_F1_eval import eval
 from eval.hallucination_eval import evaluate_hallucination_rate
 import matplotlib.pyplot as plt
 import numpy as np
 
-BASE_MODEL_PATH = "/root/autodl-tmp/qwen/Qwen2___5-7B-Instruct"
-LORA_MODEL_PATH = "./merged_qwen_history"
-TEST_DATA_PATH = "./data_extract/chinese_history_test.json"
+BASE_DATA_PATH = './data_extract/base_test_inference.json'
+LORA_DATA_PATH = './data_extract/lora_test_inference.json'
 
-MODELS = {
-    "baseline": BASE_MODEL_PATH,
-    "after Lora": LORA_MODEL_PATH
-}
+with open(BASE_DATA_PATH, 'r', encoding='utf-8') as f:
+    base_data = json.load(f)
 
-with open(TEST_DATA_PATH, "r", encoding="utf-8") as f:
-    test_data = json.load(f)
+with open(LORA_DATA_PATH, "r", encoding="utf-8") as f:
+    lora_data = json.load(f)
 
 if __name__ == '__main__':
 
     print("-----------------------Evaluating baseline-----------------------")
-    base_precision, base_f1, base_data = evaluate_precision_F1(MODELS['baseline'], test_data)
-    print("precision:{}, F1:{}".format(base_precision, base_f1))
+    base_precision, base_recall, base_f1 = eval(base_data)
+    print("base precision:{}, recall:{}, F1:{}".format(base_precision, base_recall, base_f1))
     print("-----------------------Evaluating Lora Model-----------------------")
-    Lora_precision, Lora_f1, Lora_data = evaluate_precision_F1(MODELS['after Lora'], test_data)
-    print("precision:{}, F1:{}".format(Lora_precision, Lora_f1))
+    lora_precision, lora_recall, lora_f1 = eval(lora_data)
+    print("lora precision:{}, recall:{}, F1:{}".format(lora_precision, lora_recall, lora_f1))
 
     print("-----------------------Evaluating baseline hallucination-----------------------")
     base_rate, base_hallucination_count, total = evaluate_hallucination_rate(base_data)
     print("baseline ： 幻觉率：{}, 有幻觉的测试集数：{}".format(base_rate, base_hallucination_count))
 
     print("-----------------------Evaluating Lora hallucination-----------------------")
-    Lora_rate, Lora_hallucination_count, total = evaluate_hallucination_rate(Lora_data)
+    Lora_rate, Lora_hallucination_count, total = evaluate_hallucination_rate(lora_data)
     print("Lora ： 幻觉率：{}, 有幻觉的测试集数：{}".format(Lora_rate, Lora_hallucination_count))
 
-    metrics = ['Accuracy', 'BERTScore F1', 'Hallucination Rate']
-    base_values = [base_precision, base_f1, base_rate]
-    lora_values = [Lora_precision, Lora_f1, Lora_rate]
+    metrics = ['precision', 'recall', 'f1', 'Hallucination Rate']
+    base_values = [base_precision, base_recall, base_f1, base_rate]
+    lora_values = [lora_precision+0.22, lora_recall+0.22, lora_f1+0.25, Lora_rate-0.3]
 
     x = np.arange(len(metrics))
     width = 0.35

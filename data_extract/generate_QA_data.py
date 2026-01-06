@@ -8,6 +8,7 @@ from typing import *
 import json
 import os
 import time
+import random
 
 url = 'https://api.siliconflow.cn/v1/chat/completions'
 headers = {
@@ -16,7 +17,7 @@ headers = {
 }
 
 payload = {
-  "model": "Qwen/Qwen3-VL-30B-A3B-Thinking",
+  "model": "Qwen/Qwen2.5-32B-Instruct",
   "messages": [
     {
       "role": "user",
@@ -85,8 +86,23 @@ class Qwen:
 
 if __name__ == '__main__':
 
-    prompt = "你是一个中国历史专家。请基于以下历史文本，直接生成5个Alpaca 格式的 QA 对（JSON 列表形式）,我将使用生成的QA对进行Lora微调，使得可以提升垂直领域的模型准确度并降低模型幻觉率,在最后再帮我生成1条通识数据QA对,通识数据QA对的内容需要不是历史领域的其他任何领域内容,请帮我生成一些高质量的QA对，部分QA对可以为长文本,每个 QA 对格式严格如下：直接输出完整的 JSON 列表，不要任何解释、思考或工具调用,不要使用 <think> 标签, 不需要任何多余的内容只需要QA对数据。历史文本：{}"
+    prompt = """你是一个严谨的中国历史数据合成专家。你的任务是：基于我提供的【历史文本】，生成{}个高质量的Alpaca格式指令微调数据（question-answer对）。
 
+    严格要求：
+    1. 所有问题和答案必须100%来自提供的【历史文本】，不允许加入任何文本之外的知识、不允许杜撰、不允许推测。
+    2. 如果文本信息不足以支撑一个完整答案，就不要生成该问题。
+    3. 问题要多样：包括事实性问题、因果关系、时间顺序、人物关系、细节解读等。
+    4. 答案要准确、完整，可以是长文本，直接引用或合理组织文本内容。
+    5. 最后额外生成3个通史类QA对：基于中国从夏商周到中华民国的标准通史知识（不需要依赖当前文本），问题覆盖朝代更迭、重大事件脉络、兴衰原因等，确保事实标准无争议。
+
+    输出格式：直接输出一个完整的JSON列表，不要任何解释、思考、工具调用、<think>标签或多余文字。
+    示例输出格式：
+    [
+      {{"question": "xxx", "answer": "xxx"}},
+      ...
+    ]
+    历史文本：{}
+    """
     files = os.listdir('./history_data')
     for file_index, file in enumerate(files):
         try:
@@ -95,11 +111,12 @@ if __name__ == '__main__':
                 content = f.read()
                 content = content.replace('\n', '')
             print("开始处理文件：{}".format(file))
-            for i in range(0, len(content)-302 ,300):
+            for i in range(0, len(content)-402 ,200):
                 try:
-                    _ = content[i: i+300]
-                    Qwen.get_answer(prompt.format(_))
-                    print("file_{}_{}_{}生成完毕".format(file_index, file, i//300+1))
+                    _ = content[i: i+400]
+                    num_qa = random.randint(6, 10)
+                    Qwen.get_answer(prompt.format(num_qa,_))
+                    print("file_{}_{}_{}生成完毕".format(file_index, file, i//400+1))
                 except:
                     time.sleep(10)
                     continue

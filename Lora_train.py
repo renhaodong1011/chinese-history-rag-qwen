@@ -2,32 +2,33 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
 from transformers import DataCollatorForLanguageModeling
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, Dataset, DatasetDict
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
+from transformers import EarlyStoppingCallback
 
 # ==================== 配置区 ====================
 MODEL_PATH = "/root/autodl-tmp/qwen/Qwen2___5-7B-Instruct"
 DATASET_PATH = "./data_extract/chinese_history_qa.json"
 OUTPUT_DIR = "/root/autodl-tmp/qwen_history_lora"
-MAX_SEQ_LENGTH = 512
+MAX_SEQ_LENGTH = 1024
 
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
 
 # LoRA 参数
-R = 64
-LORA_ALPHA = 128
-LORA_DROPOUT = 0.1
+R = 32
+LORA_ALPHA = 64
+LORA_DROPOUT = 0.05
 TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj",
                   "gate_proj", "up_proj", "down_proj"]
 
 # 训练超参数
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 GRADIENT_ACCUMULATION_STEPS = 4
-LEARNING_RATE = 5e-5
-NUM_EPOCHS = 5
+LEARNING_RATE = 1e-4
+NUM_EPOCHS = 3
 WARMUP_STEPS = 100
 LOGGING_STEPS = 10  # 每 10 步记录一次
 SAVE_STEPS = 200
@@ -68,24 +69,18 @@ model = get_peft_model(model, lora_config)
 model.print_trainable_parameters()
 model.gradient_checkpointing_enable()
 
-# 3-4. 数据加载和预处理（保持不变）
-# dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
-# try:
-#     dataset = load_dataset(
-#                     "json",
-#                     data_files=DATASET_PATH,
-#                     split="train",
-#                     field="text" )
-# except Exception as e:
-#     print("数据集加载失败！")
-#     print(traceback.format_exc())  # 这行会打印完整的错误堆栈
-#     raise
+# 3-4. 数据加载和预处理
 df = pd.read_json(DATASET_PATH, orient='records')
 for col in df.columns:
     if df[col].dtype == 'object':
         df[col] = df[col].astype(str)
 dataset = Dataset.from_pandas(df)
 
+dataset = dataset.train_test_split(test_size=0.1)
+datasets = DatasetDict({
+    "train": dataset["train"],
+    "validation": dataset["test"],
+})
 
 def preprocess_function(examples):
     instructions = examples['instruction']
@@ -95,8 +90,8 @@ def preprocess_function(examples):
     full_texts = []
     for instr, inp, out in zip(instructions, inputs, outputs):
         text = (
-            "<|im_start|>system\n你是一个有帮助的助手。<|im_end|>\n"
-            f"<|im_start|>user\n{instr}\n{inp}<|im_end|>\n"
+            "<|im_start|>system\n你是中国历史领域专家。回答时必须严格基于真实历史事实，不允许任何杜撰、推测或虚构内容。如果问题超出你的知识范围或不确定，请直接回复“不知道”或“我无法确认具体细节”。回答要准确、简洁、客观，避免使用小说化或文学化表达。<|im_end|>\n"
+            f"<|im_start|>user\n请基于真实历史知识回答以下问题：\n{instr}\n{inp}<|im_end|>\n"
             f"<|im_start|>assistant\n{out}<|im_end|>\n"
         )
         full_texts.append(text)
@@ -124,10 +119,10 @@ def preprocess_function(examples):
     return model_inputs
 
 
-tokenized_dataset = dataset.map(
+tokenized_dataset = datasets.map(
     preprocess_function,
     batched=True,
-    remove_columns=dataset.column_names
+    remove_columns=["instruction", "input", "output"]
 )
 
 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
@@ -151,6 +146,10 @@ class LossLoggingCallback(TrainerCallback):
 
 # 实例化回调
 loss_callback = LossLoggingCallback()
+early_stopping_callback = EarlyStoppingCallback(
+    early_stopping_patience=3,      # 验证集指标连续3次没有改善就停止
+    early_stopping_threshold=0.01,  # 改善幅度小于0.01%视为没有改善
+)
 
 # ==================== 训练参数（新增 eval_strategy） ====================
 training_args = TrainingArguments(
@@ -182,10 +181,10 @@ training_args = TrainingArguments(
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=tokenized_dataset,
-    eval_dataset=tokenized_dataset.select(range(min(1000, len(tokenized_dataset)))),  # 用前1000条做验证集（避免太慢）
+    train_dataset=tokenized_dataset["train"],
+    eval_dataset=tokenized_dataset["validation"],
     data_collator=data_collator,
-    callbacks=[loss_callback],  # 新增：添加回调
+    callbacks=[loss_callback,early_stopping_callback],  # 新增：添加回调
 )
 
 # ==================== 开始训练 ====================
