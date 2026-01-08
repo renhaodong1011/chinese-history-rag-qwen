@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -12,6 +13,8 @@ from langchain_core.runnables import RunnablePassthrough
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
 from tqdm import tqdm
+from langchain.retrievers import ParentDocumentRetriever
+from langchain.storage import LocalFileStore  # 使用本地文件存储以持久化 docstore
 
 # ==========================================
 # 配置区域（请根据实际情况修改）
@@ -27,6 +30,9 @@ LOCAL_MODEL_PATH = "./merged_qwen_history"
 EMBEDDING_MODEL = "BAAI/bge-m3"
 # 向量库持久化目录
 VECTOR_DB_PATH = "./chroma_db_history"
+# docstore 持久化目录（新增，用于父文档存储）
+DOCSTORE_PATH = "./docstore_history"
+
 
 # ==========================================
 # 初始化 RAG 系统（只运行一次，缓存）
@@ -52,38 +58,52 @@ def initialize_rag_system():
 
     st.success(f"成功加载 {len(docs)} 个文档（部分大文件可能被自动分段）")
 
-    # 3. 文本切分
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,  # 适合历史文本，可根据需要调整
-        chunk_overlap=100,
-        length_function=len,
-    )
-    splits = text_splitter.split_documents(docs)
-    st.info(f"切分为 {len(splits)} 个 chunk")
-
-    # 4. 本地嵌入模型
+    # 3. 本地嵌入模型
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
         model_kwargs={'device': 'cuda'},
         encode_kwargs={'normalize_embeddings': True}
     )
 
-    # 5. 构建或加载向量库
-    if os.path.exists(VECTOR_DB_PATH):
-        st.info("检测到已有向量库，直接加载...")
-        vectorstore = Chroma(persist_directory=VECTOR_DB_PATH, embedding_function=embeddings)
+    # 4. 定义父子 splitter
+    parent_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=2000,  # 父 chunk：较大，适合完整历史事件/章节
+        chunk_overlap=200,
+        length_function=len,
+    )
+    child_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=400,  # 子 chunk：较小，用于精确检索
+        chunk_overlap=50,
+        length_function=len,
+    )
+
+    # 5. docstore（使用 LocalFileStore 持久化）
+    store = LocalFileStore(DOCSTORE_PATH)
+
+    # 6. 构建或加载向量库和 retriever
+    rebuild = not (os.path.exists(VECTOR_DB_PATH) and os.path.exists(DOCSTORE_PATH))
+
+    vectorstore = Chroma(
+        persist_directory=VECTOR_DB_PATH,
+        embedding_function=embeddings
+    )
+
+    retriever = ParentDocumentRetriever(
+        vectorstore=vectorstore,
+        docstore=store,
+        child_splitter=child_splitter,
+        parent_splitter=parent_splitter,
+        search_kwargs={"k": 6}  # 检索时返回的子 chunk 数
+    )
+
+    if rebuild:
+        st.info("正在构建父子向量库（首次运行较慢，后续秒开）...")
+        retriever.add_documents(docs)
+        st.success("父子向量库构建完成并已保存！")
     else:
-        st.info("正在构建向量库（首次运行较慢，后续秒开）...")
-        vectorstore = Chroma.from_documents(
-            documents=splits,
-            embedding=embeddings,
-            persist_directory=VECTOR_DB_PATH
-        )
-        st.success("向量库构建完成并已保存！")
+        st.info("检测到已有向量库和 docstore，直接加载...")
 
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
-
-    # 6. 加载本地 Qwen2.5-7B-Instruct
+    # 7. 加载本地 Qwen2.5-7B-Instruct
     if not os.path.exists(LOCAL_MODEL_PATH):
         return None, f"模型路径不存在: {LOCAL_MODEL_PATH}"
 
@@ -111,24 +131,24 @@ def initialize_rag_system():
     llm_pipeline = HuggingFacePipeline(pipeline=pipe)
 
     llm = ChatHuggingFace(
-        llm=llm_pipeline,       # ← 必须用 llm= 参数
+        llm=llm_pipeline,  # ← 必须用 llm= 参数
         tokenizer=tokenizer,
         streaming=True
     )
-    
-    # 7. Prompt 模板
+
+    # 8. Prompt 模板
     template = """
     你是一个中国历史专家。请根据以下检索到的上下文，准确、详尽地回答用户问题。
     如果上下文没有足够信息，请说“根据当前知识库，我无法提供确切答案”。
-    
+
     上下文：
     {context}
-    
+
     问题：{question}
     """
     prompt = ChatPromptTemplate.from_template(template)
 
-    # 8. RAG Chain
+    # 9. RAG Chain（使用新的 retriever）
     rag_chain = (
             {"context": retriever, "question": RunnablePassthrough()}
             | prompt
@@ -136,7 +156,7 @@ def initialize_rag_system():
             | StrOutputParser()
     )
 
-    return rag_chain, f"系统就绪！知识库包含 {len(txt_files)} 个历史 txt 文件"
+    return rag_chain, f"系统就绪！知识库包含 {len(txt_files)} 个历史 txt 文件（使用父子 chunking）"
 
 
 # ==========================================
